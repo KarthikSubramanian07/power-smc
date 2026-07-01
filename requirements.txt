@@ -1,0 +1,17 @@
+# Core sampler and validation (CPU only, no GPU needed)
+numpy>=1.24
+scipy>=1.10
+matplotlib>=3.7
+
+# Real-model experiments (GPU)
+torch>=2.1
+transformers>=4.40
+datasets>=2.18
+accelerate>=0.28
+bitsandbytes>=0.43   # 4-bit quantization; Linux/CUDA only
+
+# Optional, more robust MATH500 grading
+# math-verify>=0.5
+
+# Dev
+pytest>=7.4

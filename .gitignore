@@ -1,0 +1,55 @@
+# --- Private working notes (never commit) ---
+.dev/
+NOTES.private.md
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.installed.cfg
+*.egg
+
+# --- Virtual envs ---
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# --- Testing / coverage ---
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# --- Notebooks ---
+.ipynb_checkpoints/
+
+# --- Editor / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Models, caches, large artifacts ---
+*.safetensors
+*.bin
+*.pt
+*.ckpt
+.cache/
+hf_cache/
+models/
+
+# --- Experiment outputs (keep small committed results, ignore bulky raw dumps) ---
+results/raw/
+results/**/*.jsonl
+*.log

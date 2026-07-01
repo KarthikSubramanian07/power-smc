@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+message: "If you use this reproduction, please cite it along with the original paper."
+title: "power-smc: an open reproduction of Power-SMC"
+authors:
+  - family-names: Subramanian
+    given-names: Karthik
+version: 0.1.0
+license: MIT
+repository-code: "https://github.com/KarthikSubramanian07/power-smc"
+references:
+  - type: article
+    title: "Power-SMC: Low-Latency Sequence-Level Power Sampling for Training-Free LLM Reasoning"
+    authors:
+      - family-names: Azizi
+        given-names: Seyedarmin
+      - family-names: Baghaei Potraghloo
+        given-names: Erfan
+      - family-names: Ahmadi
+        given-names: Minoo
+      - family-names: Kundu
+        given-names: Souvik
+      - family-names: Pedram
+        given-names: Massoud
+    year: 2026
+    notes: "arXiv:2602.10273"
+  - type: article
+    title: "Reasoning with Sampling: Your Base Model is Smarter Than You Think"
+    authors:
+      - family-names: Karan
+        given-names: Aayush
+      - family-names: Du
+        given-names: Yilun
+    notes: "Reference MH power-sampling implementation: https://github.com/aakaran/reasoning-with-sampling"
