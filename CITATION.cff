@@ -30,4 +30,4 @@ references:
         given-names: Aayush
       - family-names: Du
         given-names: Yilun
-    notes: "Reference MH power-sampling implementation: https://github.com/aakaran/reasoning-with-sampling"
+    notes: "arXiv:2510.14901. Reference MH power-sampling implementation: https://github.com/aakaran/reasoning-with-sampling"

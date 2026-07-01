@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import re
 import time
 from typing import Optional
 
@@ -103,13 +102,19 @@ def answers_match(pred: Optional[str], gold: str) -> bool:
 # --------------------------------------------------------------------------------------
 # Data
 # --------------------------------------------------------------------------------------
-def load_math500(subset: Optional[int] = None, seed: int = 0):
-    """Load MATH500 (HuggingFaceH4/MATH-500), optionally a random subset."""
+def load_math500(subset: Optional[int] = None, seed: int = 0, shuffle: bool = True):
+    """Load MATH500 (HuggingFaceH4/MATH-500), optionally a random subset.
+
+    Pass ``shuffle=False`` to take the first ``subset`` problems in dataset order, which
+    lines up with the MH reference's first-shard selection.
+    """
     from datasets import load_dataset
 
     ds = load_dataset("HuggingFaceH4/MATH-500", split="test")
     if subset is not None and subset < len(ds):
-        ds = ds.shuffle(seed=seed).select(range(subset))
+        if shuffle:
+            ds = ds.shuffle(seed=seed)
+        ds = ds.select(range(subset))
     return ds
 
 
@@ -143,7 +148,7 @@ def run_benchmark(args) -> None:
 
     model = HFModel(args.model, device=args.device, dtype=args.dtype,
                     load_in_4bit=args.load_in_4bit)
-    data = load_math500(subset=args.subset, seed=args.seed)
+    data = load_math500(subset=args.subset, seed=args.seed, shuffle=args.shuffle)
 
     rows = []
     n_correct = 0
@@ -178,6 +183,58 @@ def run_benchmark(args) -> None:
 
     print(f"\n{args.method}: accuracy={acc:.3f} mean_latency={mean_latency:.2f}s/problem "
           f"over {len(data)} problems -> {args.out}")
+
+
+def run_mh(args) -> None:
+    """Run the MH reference over MATH500 shards and write results in our CSV schema.
+
+    Clones Karan & Du's repo if needed, runs their MATH500 power-sampling script for
+    ``--shards`` shards of 100 problems each, times each shard, grades the ``mcmc_answer``
+    column against the gold answer, and writes an experiments-style CSV so the MH point
+    drops straight onto the accuracy-vs-latency plot. ``--alpha`` maps to their temperature
+    as 1/alpha unless ``--temperature`` is given explicitly.
+    """
+    from power_smc.baselines import MHReference
+
+    mh = MHReference(root=args.root)
+    mh.clone()
+    temperature = args.temperature if args.temperature is not None else 1.0 / args.alpha
+
+    rows = []
+    n_correct = 0
+    total_time = 0.0
+    for batch_idx in range(args.shards):
+        t0 = time.perf_counter()
+        mh.run_math(model=args.model, mcmc_steps=args.mcmc_steps, temperature=temperature,
+                    batch_idx=batch_idx, seed=args.seed, save_str=args.save_str,
+                    device=args.device)
+        dt = time.perf_counter() - t0
+        csv_path = mh.output_csv(args.model, args.mcmc_steps, temperature, batch_idx,
+                                 args.seed, args.save_str)
+        shard = MHReference.load_results(csv_path)
+        per_problem = dt / max(len(shard), 1)
+        for r in shard:
+            correct = answers_match(r.get("mcmc_answer"), r.get("correct_answer", ""))
+            n_correct += int(correct)
+            rows.append({
+                "index": len(rows),
+                "method": "mh",
+                "correct": int(correct),
+                "seconds": round(per_problem, 4),
+                "predicted": r.get("mcmc_answer", "") or "",
+                "gold": r.get("correct_answer", "") or "",
+            })
+        total_time += dt
+        print(f"[shard {batch_idx}] {len(shard)} problems in {dt:.1f}s")
+
+    with open(args.out, "w", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+
+    acc = n_correct / len(rows)
+    print(f"\nmh: accuracy={acc:.3f} mean_latency={total_time / len(rows):.2f}s/problem "
+          f"over {len(rows)} problems -> {args.out}")
 
 
 def make_plot(args) -> None:
@@ -227,8 +284,29 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--load-in-4bit", dest="load_in_4bit", action="store_true", default=True)
     run.add_argument("--no-4bit", dest="load_in_4bit", action="store_false")
     run.add_argument("--seed", type=int, default=0)
+    run.add_argument("--shuffle", dest="shuffle", action="store_true", default=True,
+                     help="shuffle before subsetting (default)")
+    run.add_argument("--no-shuffle", dest="shuffle", action="store_false",
+                     help="take the first --subset problems in order (matches MH shard 0)")
     run.add_argument("--out", required=True)
     run.set_defaults(func=run_benchmark)
+
+    mh = sub.add_parser("mh", help="run Karan & Du's MH reference and write our-schema CSV")
+    mh.add_argument("--model", default="qwen",
+                    choices=["qwen", "qwen_math", "phi", "tulu"],
+                    help="MH short model name (maps to an HF id; see MH_MODEL_IDS)")
+    mh.add_argument("--alpha", type=float, default=4.0,
+                    help="target exponent; MH temperature is 1/alpha unless --temperature set")
+    mh.add_argument("--temperature", type=float, default=None,
+                    help="override the MH temperature directly")
+    mh.add_argument("--mcmc-steps", dest="mcmc_steps", type=int, default=10)
+    mh.add_argument("--shards", type=int, default=1, help="100-problem shards to run")
+    mh.add_argument("--seed", type=int, default=0)
+    mh.add_argument("--save-str", dest="save_str", default="results")
+    mh.add_argument("--device", default="cuda")
+    mh.add_argument("--root", default="third_party/reasoning-with-sampling")
+    mh.add_argument("--out", required=True)
+    mh.set_defaults(func=run_mh)
 
     plot = sub.add_parser("plot", help="build the accuracy-vs-latency plot from CSVs")
     plot.add_argument("--inputs", nargs="+", required=True)

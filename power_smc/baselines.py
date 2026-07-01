@@ -9,13 +9,15 @@ Two baselines matter for the headline accuracy-vs-latency plot:
   function is offered precisely so that contrast can be measured.
 
 * **Metropolis-Hastings power sampling** - the reference implementation from Karan & Du,
-  "Reasoning with Sampling" (github.com/aakaran/reasoning-with-sampling). We do not
-  reimplement MH; we wrap their code and validate Power-SMC against it. :class:`MHReference`
-  handles cloning and invoking their MATH500 scripts and parsing the resulting CSVs.
+  "Reasoning with Sampling" (github.com/aakaran/reasoning-with-sampling, arXiv:2510.14901).
+  We do not reimplement MH; we wrap their code and validate Power-SMC against it.
+  :class:`MHReference` clones the repo, runs their MATH500 power-sampling script with the
+  right flags, and locates the output CSV so it can be graded and plotted alongside ours.
 """
 
 from __future__ import annotations
 
+import csv
 import os
 import subprocess
 from dataclasses import dataclass
@@ -27,6 +29,16 @@ from .proposal import TemperatureProposal, sample_tokens
 from .utils import as_rng
 
 MH_REPO_URL = "https://github.com/aakaran/reasoning-with-sampling"
+MH_PAPER_ARXIV = "2510.14901"
+
+# The reference script exposes models by short name; these are the HF ids it loads. The
+# first three match the models the Power-SMC paper reports on.
+MH_MODEL_IDS = {
+    "qwen": "Qwen/Qwen2.5-7B",
+    "qwen_math": "Qwen/Qwen2.5-Math-7B",
+    "phi": "microsoft/Phi-3.5-mini-instruct",
+    "tulu": "allenai/Llama-3.1-Tulu-3-8B-DPO",
+}
 
 
 def baseline_decode(
@@ -54,9 +66,7 @@ def baseline_decode(
     seqs: list = [[] for _ in range(n)]
     done = np.zeros(n, dtype=bool)
 
-    steps = 0
     for _ in range(max_tokens):
-        steps += 1
         if greedy:
             tokens = np.argmax(logprobs, axis=-1).astype(np.int64)
         else:
@@ -77,58 +87,81 @@ def baseline_decode(
 
 @dataclass
 class MHReference:
-    """Thin wrapper around Karan & Du's MH power-sampling repo.
+    """Wrapper around Karan & Du's MH power-sampling repo, used as the reference.
 
-    This is a *reference*, not a reimplementation. Typical use::
-
-        mh = MHReference(root="third_party/reasoning-with-sampling")
-        mh.clone()                 # git clone if missing
-        mh.run_math(...)           # invoke their MATH500 power-sampling script
-        df = mh.load_results(csv)  # parse their output for comparison
-
-    The scripts are SLURM-oriented; see the README for running them directly on Colab or
-    Kaggle. Methods here shell out and parse CSVs rather than importing their internals,
-    which keeps this repo decoupled from their exact module layout.
+    This is a *reference*, not a reimplementation. The typical flow, all handled by
+    :func:`experiments.run_mh`, is: clone the repo, run ``power_samp_math.py`` for one or
+    more 100-problem shards, then grade the ``mcmc_answer`` column of the output CSV.
     """
 
     root: str = "third_party/reasoning-with-sampling"
 
     def is_available(self) -> bool:
-        return os.path.isdir(os.path.join(self.root, ".git")) or os.path.isdir(self.root)
+        return os.path.isdir(os.path.join(self.root, "llm_experiments"))
 
     def clone(self) -> None:
         """Clone the reference repo if it is not already present."""
         if self.is_available():
             return
-        os.makedirs(os.path.dirname(self.root) or ".", exist_ok=True)
+        parent = os.path.dirname(self.root)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         subprocess.run(["git", "clone", MH_REPO_URL, self.root], check=True)
+
+    def output_csv(self, model: str, mcmc_steps: int, temperature: float, batch_idx: int,
+                   seed: int, save_str: str = "results") -> str:
+        """Return the CSV path the reference script writes for a given configuration.
+
+        The reference builds the name from ``str()`` of each value, so we match that
+        formatting exactly (in particular for the float temperature).
+        """
+        fname = (f"{model}_math_base_power_samp_results_{mcmc_steps}_"
+                 f"{float(temperature)}_{batch_idx}_{seed}.csv")
+        return os.path.join(self.root, save_str, model, fname)
 
     def run_math(
         self,
-        script: str = "llm_experiments/power_samp_math.py",
-        extra_args: Optional[Sequence[str]] = None,
+        model: str = "qwen",
+        mcmc_steps: int = 10,
+        temperature: float = 0.25,
+        batch_idx: int = 0,
+        seed: int = 0,
+        save_str: str = "results",
+        device: str = "cuda",
         python_bin: str = "python",
+        extra_args: Optional[Sequence[str]] = None,
     ) -> subprocess.CompletedProcess:
-        """Invoke the reference MATH500 power-sampling script as a subprocess.
+        """Run one 100-problem shard of the reference MATH500 power-sampling script.
 
-        ``extra_args`` are passed straight through (model id, subset size, alpha, output
-        path, ...). Consult the reference repo for its exact flags; they are echoed in the
-        README. Raises if the script exits nonzero.
+        ``temperature`` is 1/alpha for the target exponent (0.25 corresponds to alpha=4).
+        ``batch_idx`` selects problems ``100*batch_idx : 100*(batch_idx+1)``. Raises if the
+        script exits nonzero.
         """
         if not self.is_available():
             raise FileNotFoundError(
                 f"reference repo not found at {self.root!r}; call clone() first"
             )
-        cmd = [python_bin, os.path.join(self.root, script), *(extra_args or [])]
-        return subprocess.run(cmd, check=True)
+        script = os.path.join("llm_experiments", "power_samp_math.py")
+        cmd = [
+            python_bin, script,
+            "--model", model,
+            "--mcmc_steps", str(mcmc_steps),
+            "--temperature", str(float(temperature)),
+            "--batch_idx", str(batch_idx),
+            "--seed", str(seed),
+            "--save_str", save_str,
+            "--device", device,
+            *(extra_args or []),
+        ]
+        return subprocess.run(cmd, check=True, cwd=self.root)
 
     @staticmethod
-    def load_results(csv_path: str):
-        """Load a reference output CSV (response / correct answer / prompt columns)."""
-        import csv
+    def load_results(csv_path: str) -> list:
+        """Load a reference output CSV into a list of row dicts.
 
-        rows = []
+        Columns include ``question``, ``correct_answer``, ``std_answer`` (standard
+        decoding), ``naive_answer`` (naive temperature), and ``mcmc_answer`` (MH power
+        sampling, the column to grade for the MH point).
+        """
         with open(csv_path, newline="") as fh:
-            for row in csv.DictReader(fh):
-                rows.append(row)
-        return rows
+            return list(csv.DictReader(fh))
