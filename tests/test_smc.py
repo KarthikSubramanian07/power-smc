@@ -4,7 +4,6 @@ from power_smc import (
     LinearRamp,
     ToyMarkovModel,
     enumerate_exact,
-    optimal_proposal,
     power_smc,
     systematic_resample,
     total_variation,

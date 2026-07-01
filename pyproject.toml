@@ -24,3 +24,7 @@ packages = ["power_smc"]
 testpaths = ["tests"]
 addopts = "-q"
 pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"

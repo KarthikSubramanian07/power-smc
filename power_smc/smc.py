@@ -15,14 +15,13 @@ and runs on a real model.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Callable, Optional, Protocol, Sequence, runtime_checkable
+from dataclasses import dataclass
+from typing import Any, Optional, Protocol, Sequence, runtime_checkable
 
 import numpy as np
 
 from .proposal import (
     Proposal,
-    TemperatureProposal,
     incremental_log_weight,
     optimal_proposal,
     sample_tokens,
