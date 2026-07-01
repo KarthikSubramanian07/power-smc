@@ -88,6 +88,29 @@ class HFModel:
         self.eos_id = int(resolved_eos)
         self.vocab_size = int(self.model.config.vocab_size)
 
+    @classmethod
+    def from_model(cls, model, tokenizer=None, eos_id: Optional[int] = None) -> "HFModel":
+        """Wrap an already-loaded model and tokenizer without hitting the hub.
+
+        Useful for tests (a tiny in-memory model) and for callers that manage loading
+        themselves. ``tokenizer`` may be ``None`` if only the sampling loop is used
+        (``prefill``/``decode``/``reorder``), since those need token ids, not text.
+        """
+        import torch
+
+        self = cls.__new__(cls)
+        self.torch = torch
+        self.model = model.eval()
+        self.tokenizer = tokenizer
+        self.device = str(next(model.parameters()).device)
+        self.model_name = getattr(model.config, "_name_or_path", "in-memory")
+        resolved_eos = eos_id if eos_id is not None else getattr(tokenizer, "eos_token_id", None)
+        if resolved_eos is None:
+            raise ValueError("no eos id available; pass eos_id explicitly")
+        self.eos_id = int(resolved_eos)
+        self.vocab_size = int(model.config.vocab_size)
+        return self
+
     # -- prompt helpers ------------------------------------------------------------
     def encode_chat(self, question: str, system: Optional[str] = None) -> list:
         """Apply the model's chat template and return prompt token ids."""
