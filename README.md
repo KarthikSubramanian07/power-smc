@@ -1,5 +1,10 @@
 # power-smc
 
+[![tests](https://github.com/KarthikSubramanian07/power-smc/actions/workflows/tests.yml/badge.svg)](https://github.com/KarthikSubramanian07/power-smc/actions/workflows/tests.yml)
+[![python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
+[![license: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![arXiv](https://img.shields.io/badge/arXiv-2602.10273-b31b1b.svg)](https://arxiv.org/abs/2602.10273)
+
 Fast, training-free sequence-level power sampling for LLM reasoning. This is an open
 reproduction of *Power-SMC: Low-Latency Sequence-Level Power Sampling for Training-Free
 LLM Reasoning* (Azizi, Baghaei Potraghloo, Ahmadi, Kundu, Pedram; arXiv:2602.10273),
@@ -101,9 +106,14 @@ python experiments.py run --method power-smc \
     --model Qwen/Qwen2.5-1.5B-Instruct --subset 100 \
     --particles 16 --alpha 4 --out results/math500_power_smc.csv
 
-# build the plot
+# MH reference (clones and runs Karan and Du's repo, grades the mcmc_answer column)
+python experiments.py mh \
+    --model qwen --alpha 4 --shards 1 \
+    --out results/math500_mh.csv
+
+# build the plot with all three points
 python experiments.py plot \
-    --inputs results/math500_baseline.csv results/math500_power_smc.csv \
+    --inputs results/math500_baseline.csv results/math500_mh.csv results/math500_power_smc.csv \
     --out results/plots/accuracy_latency.png
 ```
 
@@ -112,12 +122,17 @@ python experiments.py plot \
 ### The MH baseline
 
 I do not reimplement Metropolis-Hastings. The reference is Karan and Du's public repo,
-[reasoning-with-sampling](https://github.com/aakaran/reasoning-with-sampling), which has
-MATH500 power-sampling scripts. `power_smc/baselines.py` has a thin wrapper
-(`MHReference`) that clones it, runs its MATH500 script, and parses the output CSVs so
-you can drop an MH point onto the same plot. Validating Power-SMC against a real MH
-implementation, rather than one I wrote myself, is the main reason to trust the
-comparison.
+[reasoning-with-sampling](https://github.com/aakaran/reasoning-with-sampling)
+(arXiv:2510.14901). The `mh` subcommand above does the wiring end to end: it clones the
+repo, runs their `power_samp_math.py` for the requested 100-problem shards (their
+temperature is 1/alpha, so `--alpha 4` maps to 0.25), times each shard, grades the
+`mcmc_answer` column against the gold answer, and writes a CSV in the same schema as the
+other methods so it drops straight onto the plot. `MHReference` in
+`power_smc/baselines.py` holds the clone/run/locate logic. Their `--model` names map to
+the same base models the Power-SMC paper uses (`qwen` is Qwen2.5-7B, `qwen_math` is
+Qwen2.5-Math-7B, `phi` is Phi-3.5-mini), so point Power-SMC at the same base model for an
+apples-to-apples comparison. Validating against a real MH implementation, rather than one
+I wrote myself, is the main reason to trust the comparison.
 
 ## Repository layout
 
