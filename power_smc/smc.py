@@ -156,6 +156,12 @@ def power_smc(
     """
     rng = as_rng(seed)
     n = int(n_particles)
+    if n < 1:
+        raise ValueError("n_particles must be >= 1")
+    if not (0.0 < float(kappa) <= 1.0):
+        raise ValueError("kappa must be in (0, 1]")
+    if int(max_tokens) < 1:
+        raise ValueError("max_tokens must be >= 1")
 
     schedule = alpha_schedule if alpha_schedule is not None else ConstantSchedule(alpha)
     ramping = bool(getattr(schedule, "ramping", False))

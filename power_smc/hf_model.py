@@ -48,7 +48,7 @@ class HFModel:
         dtype: str = "float16",
         load_in_4bit: bool = True,
         eos_id: Optional[int] = None,
-        trust_remote_code: bool = True,
+        trust_remote_code: bool = False,
     ):
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer
