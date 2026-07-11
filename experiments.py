@@ -149,6 +149,9 @@ def run_benchmark(args) -> None:
     model = HFModel(args.model, device=args.device, dtype=args.dtype,
                     load_in_4bit=args.load_in_4bit)
     data = load_math500(subset=args.subset, seed=args.seed, shuffle=args.shuffle)
+    if not data:
+        print("No problems to run (empty subset).", file=sys.stderr)
+        return
 
     rows = []
     n_correct = 0
@@ -227,6 +230,10 @@ def run_mh(args) -> None:
         total_time += dt
         print(f"[shard {batch_idx}] {len(shard)} problems in {dt:.1f}s")
 
+    if not rows:
+        print("No MH results to write.", file=sys.stderr)
+        return
+
     with open(args.out, "w", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
         writer.writeheader()
@@ -249,6 +256,9 @@ def make_plot(args) -> None:
     for path in args.inputs:
         with open(path, newline="") as fh:
             rows = list(csv.DictReader(fh))
+        if not rows:
+            print(f"Empty CSV: {path}", file=sys.stderr)
+            return
         method = rows[0]["method"]
         acc = sum(int(r["correct"]) for r in rows) / len(rows)
         latency = sum(float(r["seconds"]) for r in rows) / len(rows)
